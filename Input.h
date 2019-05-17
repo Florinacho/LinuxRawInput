@@ -1,28 +1,25 @@
 #ifndef __INPUT_H__
 #define __INPUT_H__
 
+#include <vector>
 #include "Event.h"
 
-extern const unsigned int KEY_ESCAPE;
-
-struct Input {
-	int keyboardFD;
-	int mouseFD;
+class Input {
+	std::vector<int> inputList;
 
 	int mouseX;
 	int mouseY;
 
+public:
 	Input();
 
 	~Input();
 
-	bool initKeyboard(const char* path);
+	bool addInput(const char* filename);
 
-	void uninitKeyboard();
+	void removeInput(int index);
 
-	bool initMouse(const char* path);
-
-	void uninitMouse();
+	void removeAllInputs();
 
 	bool getEvent(Event& event);
 };

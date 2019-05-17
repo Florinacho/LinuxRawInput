@@ -6,6 +6,7 @@ struct Event {
 		UNKNOWN,
 
 		KEYBOARD,
+
 		MOUSE_MOVE,
 		MOUSE_BUTTON,
 		MOUSE_WHEEL,

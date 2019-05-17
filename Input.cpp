@@ -1,132 +1,143 @@
 #include <unistd.h> // for close
 #include <fcntl.h> // for open
 #include <linux/input.h>
-
+// https://github.com/torvalds/linux/blob/master/include/uapi/linux/input-event-codes.h
+// https://www.kernel.org/doc/Documentation/input/input.txt
+//#include <stdio.h>
 #include "Input.h"
 
-const unsigned int KEY_ESCAPE = KEY_ESC;
-
 Input::Input() {
-	keyboardFD = -1;
-	mouseFD = -1;
-
 	mouseX = 0;
 	mouseY = 0;
 }
 
 Input::~Input() {
-	uninitKeyboard();
-	uninitMouse();
+	removeAllInputs();
 }
 
-bool Input::initKeyboard(const char* path) {
-	uninitKeyboard();
-
-	keyboardFD = open(path, O_RDONLY);
-	return (keyboardFD != -1);
-}
-
-void Input::uninitKeyboard() {
-	if (keyboardFD == -1) {
-		return;
-	}
-	close(keyboardFD);
-	keyboardFD = -1;
-}
-
-bool Input::initMouse(const char* path) {
-	uninitMouse();
-	mouseFD = open(path, O_RDONLY);
-	return (mouseFD != -1);
-}
-
-void Input::uninitMouse() {
-	if (mouseFD == -1) {
-		return;
-	}
-
-	close(mouseFD);
-	mouseFD = -1;
-}
-
-bool Input::getEvent(Event& event) {
-	event.type = Event::UNKNOWN;
-
-	input_event inputEvent;
-
-	if (keyboardFD == -1) {
+bool Input::addInput(const char* filename) {
+	int fd = open(filename, O_RDONLY);
+	if (fd < 0) {
 		return false;
 	}
 
-	fd_set set;
-	FD_ZERO(&set);
-	FD_SET(keyboardFD, &set);
-	FD_SET(mouseFD, &set);
+	inputList.push_back(fd);
+	return true;
+}
 
-	const int maxFD = keyboardFD > mouseFD ? keyboardFD : mouseFD;
+void Input::removeAllInputs() {
+	for (unsigned int index = 0; index < inputList.size(); ++index) {
+		close(inputList[index]);
+	}
+	inputList.clear();
+}
+
+void Input::removeInput(int index) {
+	if (index < 0 || index >= inputList.size()) {
+		return;
+	}
+
+	if (inputList[index] != -1) {
+		close(inputList[index]);
+		inputList[index] = -1;
+	}
+
+	inputList.erase(inputList.begin() + index);
+}
+
+bool Input::getEvent(Event& event) {
+	input_event inputEvent;
+	fd_set set;
+	int maxFD = -1;
+
+	FD_ZERO(&set);
+	event.type = Event::UNKNOWN;
+
+	for (unsigned int index = 0; index < inputList.size(); ++index) {
+		FD_SET(inputList[index], &set);
+		if (inputList[index] > maxFD) {
+			maxFD = inputList[index];
+		}
+	}
 	if (maxFD < 0) {
 		return false;
 	}
 
-	if (select(maxFD + 1, &set, NULL, NULL, NULL) > 0) {
-		if (FD_ISSET(keyboardFD, &set)) {
-			if (read(keyboardFD, &inputEvent, sizeof(inputEvent)) != sizeof(inputEvent)) {
-				uninitKeyboard();
-				return false;
-			}
-			if (inputEvent.code == 0) {
-				return false;
-			}
-			event.type = Event::KEYBOARD;
-			event.keyCode = inputEvent.code;
-			event.value = (inputEvent.value > 0);
-			return true;
-		} else
-		if (FD_ISSET(mouseFD, &set)) {
-			if (read(mouseFD, &inputEvent, sizeof(inputEvent)) != sizeof(inputEvent)) {
-				uninitMouse();
-				return false;
-			}
-			switch (inputEvent.type) {
-			case EV_KEY :
+	if (select(maxFD + 1, &set, NULL, NULL, NULL) <= 0) {
+		return false;
+	}
+
+	for (unsigned int index = 0; index < inputList.size(); ++index) {
+		const int status = FD_ISSET(inputList[index], &set);
+		if (status == -1) {
+			removeInput(index);
+			break;
+		} else if (status == 0) {
+			continue;
+		}
+
+		if (read(inputList[index], &inputEvent, sizeof(inputList)) != sizeof(inputList)) {
+			continue;
+		}
+
+		switch (inputEvent.type) {
+		case EV_KEY :
+			switch (inputEvent.code) {
+			case BTN_LEFT :
 				event.type = Event::MOUSE_BUTTON;
+				event.button = 1;
 				event.value = inputEvent.value;
-				switch (inputEvent.code) {
-				case BTN_LEFT :
-					event.button = 1;
-					return true;
-				case BTN_MIDDLE :
-					event.button = 2;
-					return true;
-				case BTN_RIGHT :
-					event.button = 3;
-					return true;
-				}
+				return true;
+			case BTN_RIGHT :
+				event.type = Event::MOUSE_BUTTON;
+				event.button = 2;
+				event.value = inputEvent.value;
+				return true;
+			case BTN_MIDDLE :
+				event.type = Event::MOUSE_BUTTON;
+				event.button = 3;
+				event.value = inputEvent.value;
+				return true;
+			case BTN_SIDE :
+			case BTN_EXTRA :
+			case BTN_BACK :
+			case BTN_TASK :
+				// Currently not used
 				break;
-			case EV_REL :
-				switch (inputEvent.code) {
-				case REL_WHEEL :
-					event.type = Event::MOUSE_WHEEL;
-					event.value = inputEvent.value;
-					return true;
-				case REL_X :
-					mouseX += inputEvent.value;
-
-					event.type = Event::MOUSE_MOVE;
-					event.x = mouseX;
-					event.y = mouseY;
-					return true;
-				case REL_Y :
-					mouseY += inputEvent.value;
-
-					event.type = Event::MOUSE_MOVE;
-					event.x = mouseX;
-					event.y = mouseY;
-					return true;
-				}
-				break;
+			default :
+				event.type = Event::KEYBOARD;
+				event.keyCode = inputEvent.code;
+				event.value = inputEvent.value;
+				return true;
 			}
+		case EV_REL :
+			switch (inputEvent.code) {
+			case REL_X :
+				mouseX += inputEvent.value;
+
+				event.type = Event::MOUSE_MOVE;
+				event.x = mouseX;
+				event.y = mouseY;
+				return true;
+			case REL_Y :
+				mouseY += inputEvent.value;
+
+				event.type = Event::MOUSE_MOVE;
+				event.x = mouseX;
+				event.y = mouseY;
+				return true;
+
+			case REL_WHEEL :
+				event.type = Event::MOUSE_WHEEL;
+				event.value = inputEvent.value;
+				return true;
+			}
+			break;
+		default :
+//			printf("Unhandled input_event(type: %d, code: %d, value: %d)\n", inputEvent.type, inputEvent.code, inputEvent.value);
+			;
 		}
 	}
+
 	return false;
 }

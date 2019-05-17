@@ -1,43 +1,46 @@
 #include <stdio.h>
 #include "Input.h"
+#include <linux/input.h>
 
-static const char* KeyboardFileName = "/dev/input/event2";
-static const char* MouseFileName = "/dev/input/event4";
+//cat /proc/bus/input/devices
+static const char* InputFileNames[] = {
+	"/dev/input/event2",	// Keyboard
+	"/dev/input/event4",	// Mouse
+	"/dev/input/event5"	// Mouse
+};
 
 int main(int argc, char** argv) {
 	Input input;
-	if (input.initKeyboard(KeyboardFileName) == false) {
-		printf("Warning! Cannot open keyboard file \"%s\". No keyboard events will pe posted\n", KeyboardFileName);
-		return 1;
-	}
-	if (input.initMouse(MouseFileName) == false) {
-		printf("Wawrning! Cannot open mouse file \"%s\". No mouse events will pe posted\n", MouseFileName);
-		return 1;
-	}
-
 	Event event;
 	bool run = true;
-	while(run) {
-		if (input.getEvent(event) == false) {
-			continue;
-		}
 
-		switch (event.type) {
-		case Event::KEYBOARD :
-			printf("Key %d is %s.\n", event.keyCode, event.value ? "pressed" : "released");
-			if (event.keyCode == KEY_ESCAPE && event.value == 0) { // Key escape is released
-				run = false;
+	for (unsigned int index = 0; index < 3; ++index) {
+		if (input.addInput(InputFileNames[index]) == false) {
+			printf("Warning! Cannot open \"%s\".\n", InputFileNames[index]);
+		}
+	}
+
+	while(run) {
+		while(input.getEvent(event)) {
+			switch (event.type) {
+			case Event::KEYBOARD :
+				printf("Key %d | 0x%X is %s\n", event.keyCode, event.keyCode, event.value ? "pressed" : "released");
+				switch (event.keyCode) {
+				case KEY_ESC :
+					run = false;
+					break;
+				}
+				break;
+			case Event::MOUSE_MOVE :
+				printf("Mouse position: %d, %d\n", event.x, event.y);
+				break;
+			case Event::MOUSE_BUTTON :
+				printf("Mouse button %d is %s\n", event.button, event.value ? "pressed" : "released");
+				break;
+			case Event::MOUSE_WHEEL :
+				printf("Mouse wheel %s\n", event.value == 1 ? "up" : "down");
+				break;
 			}
-			break;
-		case Event::MOUSE_MOVE :
-			printf("Mouse position: %d, %d\n", event.x, event.y);
-			break;
-		case Event::MOUSE_BUTTON :
-			printf("Mouse button %d is %s.\n", event.button, event.value ? "pressed" : "released");
-			break;
-		case Event::MOUSE_WHEEL :
-			printf("Mouse wheel: %d\n", event.value);
-			break;
 		}
 	}
 

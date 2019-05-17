@@ -1,5 +1,5 @@
 CC=g++
-FLAGS=
+FLAGS=-O3
 CFILES=main.cpp Input.cpp
 LFILES=main.o Input.o
 OUTPUT=a.out
