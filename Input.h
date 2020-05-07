@@ -17,6 +17,8 @@ public:
 
 	bool addInput(const char* filename);
 
+	bool addAllInputs();
+
 	void removeInput(int index);
 
 	void removeAllInputs();

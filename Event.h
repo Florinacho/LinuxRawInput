@@ -9,9 +9,7 @@ struct Event {
 
 		MOUSE_MOVE,
 		MOUSE_BUTTON,
-		MOUSE_WHEEL,
-
-		EV_COUNT
+		MOUSE_WHEEL
 	};
 
 	int type;
@@ -22,7 +20,7 @@ struct Event {
 	};
 	union {
 		int y;
-		int value;
+		int state;
 	};
 
 	Event(int ntype = UNKNOWN, int nx = 0, int ny = 0)
